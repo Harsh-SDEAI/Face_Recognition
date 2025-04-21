@@ -1,0 +1,44 @@
+Hello reader, please allow me to explain what each table and columns respective to that table represnts in the database of AI matching task.
+
+There are total of four tables present in the database called AI_Face_Recognition
+1. AITournamentQueue, 2. GamePhotoDetail, 3. GamePhotoEmbedding, 4. PlayerPhotoEmbedding
+
+Let's breakdown each tables by their columns and their purpose.
+1. AITournamentQueue: (It maintains the information regarding each game in the tournament like status, gamenumber etc.)
+AITournamentQueueID - It is a primary key which is on auto increament for each entry in the table.
+TournamentID - It stores the TournamentID with respect to the Game (fetched from Constellation table from CDPMediaCapture database)
+GameNumber - It represents the game number. 
+TeamKey1 - A unique integer which represents one team from the respective game.
+TeamKey2 - A unique integer which represents another team from the respective game.
+Status - It represents the current state of the game. There are total 4 unique values. 1.Pending 2.Error 3.InProgress 4.Completed (the names of the status are self explanatory.)
+RetryCount - If any error occures in the process then the count will increase by 1. 
+ErrorMessage - In future the script will also store which type of error it is facing in this column.
+ProcessStartOn - Shows the date and exact time at which the process started for the respective game.
+ProcessEndOn - Shows the data and exact time at which the process ended for the respective game.
+UpdatedBy, CreatedBy - If the CDP team wants to add the name of their team members to remember who ran the script.
+UpdatedOn, CreatedOn - Any changes made to the scipt, it will store the data and time for the same.
+
+2. GamePhotoDetail: (It maintains the information regarding the Game Photos like Imagepath, NoFaceDetected etc.)
+GamePhotoDetailID: It is a primary key which is on auto increament for each entry in the table.
+NoFaceDetected (int): How many faces the script has detected for a single game photo will be stores in this column. 
+MatchedFaces (int): Out of the faces that our model has detected, how many of them we are able to match with the studio photo.
+ImagePath: It represents the imagepath for the game photos where it is stored inside local computer.
+RosterIDs: It stores the studio photos' rosterids where there is a match with the game photo. 
+TournamentID: self explanatory
+UpdatedOn, CreatedOn: self explanatory
+ConstellationID: It stores the ConstellationID from the table Constellation from the database CDPMediaCapture
+
+3. GamePhotoEmbedding: (It stores the detected faces' embedding for the Game photos)
+GamePhotoEmbeddingID: It is a primary key which is on auto increament for each entry in the table.
+GamePhotoDetailID: Stores the id from the table GamePhotoDetail, where the face is detected.
+GFaceEmbedding: Stores the detected faces' embedding in the form of bytes.
+UpdatedOn, CreatedOn, GameNumber: self explanatory
+
+4.PlayerPhotoEmbedding: (It stores the detected faces' embedding for the Studio photos)
+PlayerEmbeddingID: It is a primary key which is on auto increament for each entry in the table.
+RosterIDs: Maintains a unique rosterid respect to the player.
+TournamentID: self explanatory
+ImagePath: Stores the imagepath for the Studio images that are stored locally.
+TeamKey: Stores the teamkey from which the player belongs.
+UpdatedOn, CreatedOn, ConstellationID: self explanatory
+
