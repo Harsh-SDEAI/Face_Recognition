@@ -1,28 +1,17 @@
 """LVFace (ByteDance, ICCV 2025) loader - PyTorch backend.
 
-LVFace's official inference.py loads weights like this:
+The ViT backbone code is vendored under `lvface_backbones/` so no cloning
+or env-var setup is required.  Weights (.pt) are auto-downloaded from
+Hugging Face Hub on first run.
 
-    from backbones import get_model
+Mirrors bytedance/LVFace inference.py:
     net = get_model(name, fp16=False)
     net.load_state_dict(torch.load(weight))
-    net.eval()
-
-We replicate that here.  Rather than copy the backbones/ folder into this
-repo, we ask the user to clone https://github.com/bytedance/LVFace once
-and point env var LVFACE_REPO_DIR at the clone.  The loader adds that
-directory to sys.path so `from backbones import get_model` resolves.
-
-Weights (.pt) are auto-downloaded from Hugging Face Hub on first run.
-
-Input (matches LVFace inference.py):
-    - 112x112 BGR
-    - (pixel / 255 - 0.5) / 0.5  -> [-1, 1]
-    - NCHW float32
+    # 112x112 BGR, (img/255 - 0.5) / 0.5 normalization
 """
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 
 import cv2
@@ -31,6 +20,8 @@ import torch
 from torch.nn.functional import normalize
 
 import config
+
+from .lvface_backbones import get_model
 
 
 def _download_weights_if_missing() -> Path:
@@ -47,34 +38,12 @@ def _download_weights_if_missing() -> Path:
     return target
 
 
-def _import_get_model():
-    """Add LVFACE_REPO_DIR to sys.path and import backbones.get_model."""
-    repo_dir = config.LVFACE_REPO_DIR
-    if not repo_dir:
-        raise RuntimeError(
-            "LVFACE_REPO_DIR is not set.  Clone https://github.com/bytedance/LVFace "
-            "and set LVFACE_REPO_DIR in .env to that path so the loader can "
-            "import backbones.get_model."
-        )
-    repo_path = Path(repo_dir).expanduser().resolve()
-    if not (repo_path / "backbones" / "__init__.py").exists():
-        raise RuntimeError(
-            f"LVFACE_REPO_DIR={repo_path} does not contain backbones/__init__.py. "
-            "Did you clone bytedance/LVFace to this path?"
-        )
-    if str(repo_path) not in sys.path:
-        sys.path.insert(0, str(repo_path))
-    from backbones import get_model  # type: ignore
-    return get_model
-
-
 class LVFaceEmbedder:
     INPUT_SIZE = 112
     EMBED_DIM = 512
 
     def __init__(self, device: torch.device):
         self.device = device
-        get_model = _import_get_model()
         self.model = get_model(config.LVFACE_MODEL_NAME, fp16=False)
 
         weights = _download_weights_if_missing()

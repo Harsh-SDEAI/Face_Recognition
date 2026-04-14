@@ -10,6 +10,9 @@ torchvision==0.20.1+cu124
 # === Face detection (MTCNN) & FaceNet baseline ===
 facenet-pytorch==2.6.0
 
+# === LVFace ViT backbone uses timm helpers (DropPath, trunc_normal_, etc) ===
+timm==0.9.16
+
 # === Image processing ===
 numpy==1.26.4
 pillow==10.2.0

@@ -30,13 +30,10 @@ ADAFACE_WEIGHTS = MODEL_DIR / "adaface_ir101_webface12m.ckpt"
 MAGFACE_WEIGHTS = MODEL_DIR / "magface_epoch_00025.pth"
 LVFACE_WEIGHTS = MODEL_DIR / "lvface.pt"
 
-# ---- LVFace HF Hub (PyTorch .pt, loaded via cloned LVFace repo's backbones module) ----
+# ---- LVFace HF Hub (PyTorch .pt; backbone code vendored under lvface_backbones/) ----
 LVFACE_HF_REPO = os.getenv("LVFACE_HF_REPO", "bytedance-research/LVFace")
 LVFACE_HF_FILENAME = os.getenv("LVFACE_HF_FILENAME", "LVFace-B_WebFace4M.pt")
 LVFACE_MODEL_NAME = os.getenv("LVFACE_MODEL_NAME", "vit_b")
-# Path to a local clone of https://github.com/bytedance/LVFace - loader will
-# add this to sys.path so it can `from backbones import get_model`.
-LVFACE_REPO_DIR = os.getenv("LVFACE_REPO_DIR", "")
 
 # ---- Detection ----
 MTCNN_THRESHOLD = float(os.getenv("MTCNN_THRESHOLD", 0.85))
