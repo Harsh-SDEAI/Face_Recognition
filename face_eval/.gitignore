@@ -1,0 +1,12 @@
+.env
+models/*.pth
+models/*.ckpt
+models/*.pt
+models/*.bin
+face_crops/
+__pycache__/
+*.pyc
+.venv/
+venv/
+facetest/
+*.egg-info/

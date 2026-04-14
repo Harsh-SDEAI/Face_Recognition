@@ -1,0 +1,34 @@
+# === PyTorch with CUDA 12.4 support (NVIDIA RTX 4090) ===
+# Note: +cu124 local version pin is required - without it pip will grab the
+# CPU wheel from PyPI and conflict with torchvision's cu124 dependency.
+# If pip still resolves to the CPU wheel, install torch/torchvision separately
+# with --index-url https://download.pytorch.org/whl/cu124 before this file.
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1+cu124
+torchvision==0.20.1+cu124
+
+# === Face detection (MTCNN) & FaceNet baseline ===
+facenet-pytorch==2.6.0
+
+# === Image processing ===
+numpy==1.26.4
+pillow==10.2.0
+opencv-python==4.11.0.86
+scikit-image==0.25.2
+
+# === Database (SQL Server) ===
+pyodbc==5.2.0
+
+# === Configuration ===
+python-dotenv==1.1.0
+
+# === LVFace weight download from Hugging Face Hub ===
+huggingface_hub==0.26.2
+
+# === UI dashboard ===
+streamlit==1.40.0
+pandas==2.2.3
+
+# === Utilities ===
+tqdm==4.67.1
+matplotlib==3.10.1
