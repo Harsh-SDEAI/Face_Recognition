@@ -1,10 +1,15 @@
 """ArcFace (IR-100 / Glint360K) loader.
 
-Depends on `arcface_iresnet.py` which is the IResNet implementation copied
-from https://github.com/deepinsight/insightface/tree/master/recognition/arcface_torch.
+Uses the InsightFace arcface_torch backbones installed via pip from the
+GitHub source, e.g.:
+    pip install git+https://github.com/deepinsight/insightface.git#subdirectory=recognition/arcface_torch
+
+We try several import paths because the arcface_torch package exposes
+`iresnet100` under different names depending on how it was installed.
+No Python file needs to be copied into model_loaders/ for this model.
 
 Input: 112x112 BGR, normalized to [-1, 1] via (img/255 - 0.5) / 0.5.
-Output: 512-d, L2-normalized here so cosine similarity == dot product.
+Output: 512-d, L2-normalized so cosine similarity == dot product.
 """
 from __future__ import annotations
 
@@ -15,13 +20,30 @@ from torch.nn.functional import normalize
 
 import config
 
-try:
-    from .arcface_iresnet import iresnet100  # type: ignore
-except Exception as exc:  # noqa: BLE001
-    iresnet100 = None
-    _IMPORT_ERR = exc
-else:
-    _IMPORT_ERR = None
+
+def _import_iresnet100():
+    """Try known arcface_torch import paths; return iresnet100 or None."""
+    errors = []
+    for path in (
+        "backbones.iresnet",             # arcface_torch installed as package
+        "arcface_torch.backbones.iresnet",
+        "insightface.recognition.arcface_torch.backbones.iresnet",
+    ):
+        try:
+            mod = __import__(path, fromlist=["iresnet100"])
+            return getattr(mod, "iresnet100")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{path}: {exc}")
+    # Fallback: a locally copied file (optional - only if someone dropped it in).
+    try:
+        from . import arcface_iresnet  # type: ignore
+        return getattr(arcface_iresnet, "iresnet100")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"local arcface_iresnet: {exc}")
+    raise ImportError(
+        "Could not import iresnet100 from arcface_torch.  Tried:\n  - "
+        + "\n  - ".join(errors)
+    )
 
 
 class ArcFaceEmbedder:
@@ -29,16 +51,10 @@ class ArcFaceEmbedder:
     EMBED_DIM = 512
 
     def __init__(self, device: torch.device, weights_path=None):
-        if iresnet100 is None:
-            raise ImportError(
-                "arcface_iresnet.py not found in model_loaders/.  Copy iresnet.py "
-                "from the InsightFace arcface_torch repo.  Original error: "
-                f"{_IMPORT_ERR}"
-            )
         self.device = device
+        iresnet100 = _import_iresnet100()
         self.model = iresnet100(num_features=self.EMBED_DIM)
         state = torch.load(weights_path or config.ARCFACE_WEIGHTS, map_location="cpu")
-        # Weights may be a plain state_dict or wrapped.
         if isinstance(state, dict) and "state_dict" in state:
             state = state["state_dict"]
         self.model.load_state_dict(state, strict=False)

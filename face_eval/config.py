@@ -28,11 +28,11 @@ FACE_CROPS_DIR.mkdir(parents=True, exist_ok=True)
 ARCFACE_WEIGHTS = MODEL_DIR / "arcface_ir100_ms1mv3.pth"
 ADAFACE_WEIGHTS = MODEL_DIR / "adaface_ir101_webface12m.ckpt"
 MAGFACE_WEIGHTS = MODEL_DIR / "magface_epoch_00025.pth"
-LVFACE_WEIGHTS = MODEL_DIR / "lvface.pt"
+LVFACE_WEIGHTS = MODEL_DIR / "lvface.onnx"
 
-# ---- LVFace HF Hub ----
+# ---- LVFace HF Hub (ONNX, no model-def file needed) ----
 LVFACE_HF_REPO = os.getenv("LVFACE_HF_REPO", "bytedance-research/LVFace")
-LVFACE_HF_FILENAME = os.getenv("LVFACE_HF_FILENAME", "LVFace-B_WebFace4M.pt")
+LVFACE_HF_FILENAME = os.getenv("LVFACE_HF_FILENAME", "LVFace-B_WebFace4M.onnx")
 
 # ---- Detection ----
 MTCNN_THRESHOLD = float(os.getenv("MTCNN_THRESHOLD", 0.85))

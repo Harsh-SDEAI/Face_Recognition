@@ -25,6 +25,10 @@ python-dotenv==1.1.0
 # === LVFace weight download from Hugging Face Hub ===
 huggingface_hub==0.26.2
 
+# === ONNX Runtime (GPU) - used by LVFace inference ===
+# Ships CUDA 12 kernels that match our torch==2.5.1+cu124 build.
+onnxruntime-gpu==1.20.1
+
 # === UI dashboard ===
 streamlit==1.40.0
 pandas==2.2.3
