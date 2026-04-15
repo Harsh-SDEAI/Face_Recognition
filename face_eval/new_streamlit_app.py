@@ -157,14 +157,24 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
 
 # ---------- Compare dialog ----------
 @st.dialog("Side-by-side comparison", width="large")
-def compare_dialog(studio_info: dict, game_info: dict):
+def compare_dialog(studio_info: dict, game_info: dict,
+                   prior_verdict: str | None, threshold: float):
     """Modal: studio (left) vs game (right). Each side shows aligned crop on top,
-    full photo with red box below."""
+    full photo with red box below.  Includes badge + ✓/✗ buttons so the reviewer
+    can label without closing the dialog."""
     st.caption(
         f"Studio FaceID {studio_info['face_id']} (team {studio_info['team_key']})  "
         f"vs  Game FaceID {game_info['face_id']}  |  "
-        f"model {game_info['model_name']}  |  sim {game_info['similarity']:.3f}"
+        f"model {game_info['model_name']}  |  sim {game_info['similarity']:.3f}  |  "
+        f"threshold {threshold:.2f}"
     )
+
+    # Prior-judgment badge at the top so it's visible alongside the photos.
+    if prior_verdict == "Y":
+        st.success("\u2713 already marked correct (click a button below to overwrite)")
+    elif prior_verdict == "N":
+        st.error("\u2717 already marked wrong (click a button below to overwrite)")
+
     left, right = st.columns(2)
 
     with left:
@@ -195,8 +205,23 @@ def compare_dialog(studio_info: dict, game_info: dict):
         except Exception as exc:  # noqa: BLE001
             st.warning(f"cannot render game full photo: {exc}")
 
-    if st.button("Close", key="compare_close"):
-        st.rerun()
+    st.markdown("---")
+    b_y, b_n, b_close = st.columns(3)
+    with b_y:
+        if st.button("\u2713 correct", key="compare_y", use_container_width=True):
+            insert_judgment(studio_info["face_id"], game_info["face_id"],
+                            game_info["model_name"], "Y",
+                            game_info["similarity"], threshold)
+            st.rerun()
+    with b_n:
+        if st.button("\u2717 wrong", key="compare_n", use_container_width=True):
+            insert_judgment(studio_info["face_id"], game_info["face_id"],
+                            game_info["model_name"], "N",
+                            game_info["similarity"], threshold)
+            st.rerun()
+    with b_close:
+        if st.button("Close", key="compare_close", use_container_width=True):
+            st.rerun()
 
 
 # ---------- UI ----------
@@ -266,7 +291,7 @@ def main():
         m: st.sidebar.slider(m, 0.0, 1.0, config.DEFAULT_COSINE_THRESHOLD, 0.01, key=f"thr_{m}")
         for m in MODELS
     }
-    top_k = st.sidebar.number_input("Max matches to show per model", 1, 50, 8)
+    top_k = st.sidebar.number_input("Max matches to show per model", 1, 50, 10)
 
     # --- Compute matches per model ---
     matches_by_model: dict[str, pd.DataFrame] = {}
@@ -353,7 +378,9 @@ def main():
                         "x1": int(row.BoxX1), "y1": int(row.BoxY1),
                         "x2": int(row.BoxX2), "y2": int(row.BoxY2),
                     }
-                    compare_dialog(studio_info, game_info)
+                    compare_dialog(studio_info, game_info,
+                                   prior_verdict=prior,
+                                   threshold=thresholds[model_name])
 
                 b1, b2 = st.columns(2)
                 key_y = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_y"
