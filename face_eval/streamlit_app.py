@@ -129,6 +129,29 @@ def insert_judgment(studio_face_id: int, game_face_id: int, model_name: str,
     conn.close()
 
 
+def load_judgments_for_studio(studio_face_id: int) -> dict:
+    """Return latest Y/N judgment per (game_face_id, model_name) for this studio face.
+
+    Latest wins when multiple rows exist for the same triplet - allows users to
+    overwrite prior decisions simply by clicking again.  Not cached because
+    judgments change as the user clicks, and the query is cheap (indexed).
+    """
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT GameFaceID, ModelName, Judgment "
+        "FROM EvalManualJudgment "
+        "WHERE StudioFaceID = ? "
+        "ORDER BY JudgedAt ASC",
+        studio_face_id,
+    )
+    # Iterating in ascending time means later rows overwrite earlier -> latest wins.
+    result = {(int(g), m): j for g, m, j in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return result
+
+
 # ---------- Image helpers ----------
 def draw_box(image_path: str, x1: int, y1: int, x2: int, y2: int) -> Image.Image:
     img = Image.open(image_path).convert("RGB")
@@ -245,6 +268,10 @@ def main():
 
     # --- 5-column grid ---
     st.subheader("Model matches")
+    # Load prior judgments for this studio face so previously-marked pairs show
+    # a badge.  Re-reads from DB on every rerun, which naturally picks up new
+    # clicks (Streamlit reruns main() after each button press).
+    prior_judgments = load_judgments_for_studio(studio_face_id)
     cols = st.columns(5)
     qnorms = embeddings.get("__qnorm__", {})
     for col, model_name in zip(cols, MODELS):
@@ -267,6 +294,11 @@ def main():
                     st.image(game_img, caption=caption, use_container_width=True)
                 except Exception as exc:  # noqa: BLE001
                     st.warning(f"cannot render: {exc}")
+                prior = prior_judgments.get((int(row.GameFaceID), model_name))
+                if prior == "Y":
+                    st.success("\u2713 already marked correct (click to overwrite)")
+                elif prior == "N":
+                    st.error("\u2717 already marked wrong (click to overwrite)")
                 b1, b2 = st.columns(2)
                 key_y = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_y"
                 key_n = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_n"
