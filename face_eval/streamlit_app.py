@@ -89,23 +89,26 @@ def load_embeddings_for_faces(face_ids: tuple[int, ...]) -> dict:
     if not face_ids:
         return {m: {} for m in MODELS}
     conn = connect()
-    # SQL Server IN with many params: chunk if needed
-    placeholders = ",".join(["?"] * len(face_ids))
-    q = (
-        "SELECT FaceID, ModelName, Embedding, QualityNorm FROM EvalEmbedding "
-        f"WHERE FaceID IN ({placeholders})"
-    )
     cur = conn.cursor()
-    cur.execute(q, *face_ids)
     result = {m: {} for m in MODELS}
     qnorm = {}
-    for face_id, model_name, blob, qn in cur.fetchall():
-        if blob is None:
-            continue
-        arr = np.frombuffer(bytes(blob), dtype=np.float32)
-        result.setdefault(model_name, {})[int(face_id)] = arr
-        if qn is not None:
-            qnorm[int(face_id)] = float(qn)
+    # SQL Server caps a single query at 2100 parameters; chunk the IN (...) list.
+    CHUNK = 1000
+    for start in range(0, len(face_ids), CHUNK):
+        chunk = face_ids[start:start + CHUNK]
+        placeholders = ",".join(["?"] * len(chunk))
+        q = (
+            "SELECT FaceID, ModelName, Embedding, QualityNorm FROM EvalEmbedding "
+            f"WHERE FaceID IN ({placeholders})"
+        )
+        cur.execute(q, *chunk)
+        for face_id, model_name, blob, qn in cur.fetchall():
+            if blob is None:
+                continue
+            arr = np.frombuffer(bytes(blob), dtype=np.float32)
+            result.setdefault(model_name, {})[int(face_id)] = arr
+            if qn is not None:
+                qnorm[int(face_id)] = float(qn)
     cur.close()
     conn.close()
     result["__qnorm__"] = qnorm
