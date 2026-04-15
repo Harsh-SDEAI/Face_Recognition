@@ -43,8 +43,12 @@ class MagFaceEmbedder:
         self.model = magface_iresnet.iresnet100(num_classes=self.EMBED_DIM)
         ckpt = torch.load(weights_path or config.MAGFACE_WEIGHTS, map_location="cpu")
         state = ckpt.get("state_dict", ckpt)
-        # MagFace released checkpoints prefix keys with "features." - strip.
-        state = {k.replace("features.", "", 1): v for k, v in state.items()}
+        # The released checkpoint wraps:
+        #   features.*   -> IResNet backbone (what we want)
+        #   fc.weight    -> identity classifier head from training (discard)
+        # DataParallel may also prefix with "module.".  Keep only the backbone.
+        state = {k.replace("module.", "", 1): v for k, v in state.items()}
+        state = {k[len("features."):]: v for k, v in state.items() if k.startswith("features.")}
         self.model.load_state_dict(state, strict=False)
         self.model.eval().to(device)
 
