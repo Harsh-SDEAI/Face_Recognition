@@ -223,7 +223,12 @@ def main():
                     "BoxX2": int(gr.BoxX2), "BoxY2": int(gr.BoxY2),
                     "FaceCropPath": gr.FaceCropPath,
                 })
-        df = pd.DataFrame(rows).sort_values("Similarity", ascending=False).head(int(top_k))
+        if rows:
+            df = pd.DataFrame(rows).sort_values("Similarity", ascending=False).head(int(top_k))
+        else:
+            df = pd.DataFrame(columns=["GameFaceID", "Similarity", "ImagePath",
+                                       "BoxX1", "BoxY1", "BoxX2", "BoxY2",
+                                       "FaceCropPath"])
         matches_by_model[m] = df
 
     # --- Disagreement filter ---
