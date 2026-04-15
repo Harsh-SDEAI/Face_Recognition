@@ -48,7 +48,15 @@ class MagFaceEmbedder:
         #   fc.weight    -> identity classifier head from training (discard)
         # DataParallel may also prefix with "module.".  Keep only the backbone.
         state = {k.replace("module.", "", 1): v for k, v in state.items()}
-        state = {k[len("features."):]: v for k, v in state.items() if k.startswith("features.")}
+        # Two checkpoint layouts exist:
+        #   (a) features.* = backbone, fc.* = training head  (official release)
+        #   (b) backbone keys at top level, fc.* = training head (epoch_*.pth)
+        if any(k.startswith("features.") for k in state):
+            state = {k[len("features."):]: v for k, v in state.items()
+                     if k.startswith("features.")}
+        else:
+            # Drop the classifier head (fc.weight has shape [num_ids, 512]).
+            state = {k: v for k, v in state.items() if not k.startswith("fc.")}
         self.model.load_state_dict(state, strict=False)
         self.model.eval().to(device)
 
