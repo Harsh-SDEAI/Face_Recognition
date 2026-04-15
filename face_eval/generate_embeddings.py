@@ -197,7 +197,7 @@ def main():
 
     conn = connect()
     cur = conn.cursor()
-
+    cur.fast_executemany = True
     # Pull the 5 rows the user inserted into EvalGames.
     cur.execute("SELECT GameNumber, TeamKey1, TeamKey2 FROM EvalGames ORDER BY GameNumber")
     games = cur.fetchall()
@@ -221,7 +221,8 @@ def main():
             for p in tqdm(photos, desc=f"studio {team_key}"):
                 source_id = insert_studio_photo(cur, team_key, str(p))
                 process_photo(p, "S", source_id, mtcnn, models, cur)
-                conn.commit()
+            # conn.commit() moved out of the loop
+            conn.commit()
 
         # ---- Game photos ----
         folder = config.GAME_ROOT / str(game_number)
@@ -230,7 +231,7 @@ def main():
         for p in tqdm(photos, desc=f"game {game_number}"):
             source_id = insert_game_photo(cur, game_number, str(p))
             process_photo(p, "G", source_id, mtcnn, models, cur)
-            conn.commit()
+        conn.commit()
 
     cur.close()
     conn.close()
