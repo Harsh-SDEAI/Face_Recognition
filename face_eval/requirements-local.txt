@@ -1,0 +1,20 @@
+# Local (laptop) requirements for running the Streamlit review app only.
+# Embeddings are precomputed on the US server; this machine just reads the DB,
+# renders images, and records manual judgments.  No PyTorch, no model weights.
+
+# === UI dashboard ===
+streamlit==1.40.0
+pandas==2.2.3
+tabulate==0.9.0           # required by pandas.to_markdown in utils/report.py
+
+# === Numerics (decode VARBINARY embeddings + cosine similarity) ===
+numpy==1.26.4
+
+# === Image rendering (thumbnails + bounding-box overlays) ===
+pillow==10.2.0
+
+# === Database (local SQL Server restored from .bak) ===
+pyodbc==5.2.0
+
+# === Configuration ===
+python-dotenv==1.1.0
