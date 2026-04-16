@@ -340,13 +340,17 @@ def main():
         "x2": int(studio_row.BoxX2), "y2": int(studio_row.BoxY2),
     }
 
-    # --- Threshold sliders per model ---
+    # --- Unified threshold slider (same cutoff for all 5 models) ---
+    # Per-model calibration is a report-time exercise: EvalManualJudgment stores
+    # Similarity per row, so the optimal threshold for each model can be read off
+    # the distribution of Y-judged sims later.  The labeling UI only needs one
+    # knob.  Dict shape is kept so downstream code (similarity filter, dialog
+    # caption, insert_judgment) can still index by model name.
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Per-model threshold (cosine)")
-    thresholds = {
-        m: st.sidebar.slider(m, 0.0, 1.0, config.DEFAULT_COSINE_THRESHOLD, 0.01, key=f"thr_{m}")
-        for m in MODELS
-    }
+    unified_threshold = st.sidebar.slider(
+        "Threshold (cosine, all models)", 0.0, 1.0, 0.20, 0.01
+    )
+    thresholds = {m: unified_threshold for m in MODELS}
     top_k = st.sidebar.number_input("Max matches to show per model", 1, 50, 10)
 
     # --- Precompute per-game similarity matrices (Option 3) ---
