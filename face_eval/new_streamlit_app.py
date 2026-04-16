@@ -412,11 +412,15 @@ def main():
                     continue
                 matches_by_model[m] = df[df["GameFaceID"].isin(disagreed)]
 
-    # --- 5-column grid ---
+    # --- 5-column grid (text-only; images deferred to Compare dialog) ---
+    # Rationale: every button click triggers a full rerun.  Rendering ~50 game
+    # thumbnails (up to 5 models x top_k) via draw_box() + JPEG re-encode on
+    # every rerun is the dominant cost once similarities are cached.  Keep the
+    # grid cheap — just FaceID, similarity, prior-judgment badge, and a
+    # Compare button.  Full-size photos load only when the reviewer asks.
     st.subheader("Model matches")
     prior_judgments = load_judgments_for_studio(studio_face_id)
     cols = st.columns(5)
-    qnorms = embeddings.get("__qnorm__", {})
     for col, model_name in zip(cols, MODELS):
         with col:
             st.markdown(f"### {model_name}")
@@ -426,26 +430,18 @@ def main():
                 st.info("No matches above threshold.")
                 continue
             for _, row in df.iterrows():
-                caption = f"sim {row.Similarity:.3f}"
-                if model_name == "adaface":
-                    qn = qnorms.get(int(row.GameFaceID))
-                    if qn is not None:
-                        caption += f" | q {qn:.1f}"
-                try:
-                    game_img = draw_box(row.ImagePath, row.BoxX1, row.BoxY1,
-                                        row.BoxX2, row.BoxY2)
-                    st.image(game_img, caption=caption, use_container_width=True)
-                except Exception as exc:  # noqa: BLE001
-                    st.warning(f"cannot render: {exc}")
+                st.markdown(
+                    f"**GameFaceID {int(row.GameFaceID)}** — sim {row.Similarity:.3f}"
+                )
                 prior = prior_judgments.get((int(row.GameFaceID), model_name))
                 if prior == "Y":
-                    st.success("\u2713 already marked correct (click to overwrite)")
+                    st.success("\u2713 already marked correct")
                 elif prior == "N":
-                    st.error("\u2717 already marked wrong (click to overwrite)")
+                    st.error("\u2717 already marked wrong")
 
-                # --- Compare button (opens modal dialog) ---
                 key_compare = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_cmp"
-                if st.button("\U0001F50D Compare", key=key_compare):
+                if st.button("\U0001F50D Compare", key=key_compare,
+                             use_container_width=True):
                     game_info = {
                         "face_id": int(row.GameFaceID),
                         "model_name": model_name,
@@ -458,22 +454,7 @@ def main():
                     compare_dialog(studio_info, game_info,
                                    prior_verdict=prior,
                                    threshold=thresholds[model_name])
-
-                b1, b2 = st.columns(2)
-                key_y = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_y"
-                key_n = f"{model_name}_{studio_face_id}_{int(row.GameFaceID)}_n"
-                with b1:
-                    if st.button("\u2713 correct", key=key_y):
-                        insert_judgment(studio_face_id, int(row.GameFaceID),
-                                        model_name, "Y", float(row.Similarity),
-                                        thresholds[model_name])
-                        st.success("recorded")
-                with b2:
-                    if st.button("\u2717 wrong", key=key_n):
-                        insert_judgment(studio_face_id, int(row.GameFaceID),
-                                        model_name, "N", float(row.Similarity),
-                                        thresholds[model_name])
-                        st.warning("recorded")
+                st.markdown("---")
 
     # --- Footer: export ---
     st.markdown("---")
