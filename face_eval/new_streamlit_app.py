@@ -155,6 +155,62 @@ def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 
 
+# ---------- Similarity precompute (Option 3) ----------
+def precompute_game_similarity_data(game_df: pd.DataFrame, embeddings: dict) -> dict:
+    """Stack all game-face embeddings into a (N, D) matrix per model so that
+    cosine similarity against any studio face becomes a single matrix-vector
+    product ``G @ s`` instead of a Python loop that re-runs every rerun.
+
+    Returned structure::
+
+        {
+            "game_matrices":         {model_name: np.ndarray (N_m, D) float32},
+            "game_face_ids_by_model":{model_name: np.ndarray (N_m,)    int64},
+            "game_meta":             {face_id: {ImagePath, BoxX1, ...}},
+        }
+
+    ``N_m`` may differ per model because a face is skipped if it has no
+    embedding for that model.  Embeddings are already L2-normalized in the DB
+    so the dot product equals the cosine similarity.
+    """
+    game_meta = {
+        int(row.FaceID): {
+            "ImagePath": row.ImagePath,
+            "BoxX1": int(row.BoxX1), "BoxY1": int(row.BoxY1),
+            "BoxX2": int(row.BoxX2), "BoxY2": int(row.BoxY2),
+            "FaceCropPath": row.FaceCropPath,
+        }
+        for row in game_df.itertuples()
+    }
+
+    game_matrices: dict[str, np.ndarray] = {}
+    game_face_ids_by_model: dict[str, np.ndarray] = {}
+    for m in MODELS:
+        model_embeds = embeddings.get(m, {})
+        fids: list[int] = []
+        vecs: list[np.ndarray] = []
+        for row in game_df.itertuples():
+            fid = int(row.FaceID)
+            ge = model_embeds.get(fid)
+            if ge is None:
+                continue
+            fids.append(fid)
+            vecs.append(ge)
+        if vecs:
+            game_matrices[m] = np.vstack(vecs).astype(np.float32)
+            game_face_ids_by_model[m] = np.array(fids, dtype=np.int64)
+        else:
+            # Preserve shape so downstream code can still call `G @ s`.
+            game_matrices[m] = np.zeros((0, 512), dtype=np.float32)
+            game_face_ids_by_model[m] = np.array([], dtype=np.int64)
+
+    return {
+        "game_matrices": game_matrices,
+        "game_face_ids_by_model": game_face_ids_by_model,
+        "game_meta": game_meta,
+    }
+
+
 # ---------- Compare dialog ----------
 @st.dialog("Side-by-side comparison", width="large")
 def compare_dialog(studio_info: dict, game_info: dict,
@@ -293,35 +349,56 @@ def main():
     }
     top_k = st.sidebar.number_input("Max matches to show per model", 1, 50, 10)
 
-    # --- Compute matches per model ---
+    # --- Precompute per-game similarity matrices (Option 3) ---
+    # Key on (game_number, min_conf) because those two inputs define the face
+    # set and embedding layout.  Threshold + top_k only filter the result, so
+    # they do NOT invalidate the cache.  Stored in st.session_state so the
+    # matrix survives reruns until the user picks a different game/confidence.
+    sim_cache_key = f"simcache_{game_number}_{min_conf:.4f}"
+    if sim_cache_key not in st.session_state:
+        st.session_state[sim_cache_key] = precompute_game_similarity_data(
+            game_df, embeddings
+        )
+    sim_cache = st.session_state[sim_cache_key]
+
+    empty_cols = ["GameFaceID", "Similarity", "ImagePath",
+                  "BoxX1", "BoxY1", "BoxX2", "BoxY2", "FaceCropPath"]
+
+    # --- Compute matches per model (vectorized) ---
     matches_by_model: dict[str, pd.DataFrame] = {}
     for m in MODELS:
         studio_embed = embeddings.get(m, {}).get(studio_face_id)
-        if studio_embed is None:
-            matches_by_model[m] = pd.DataFrame()
+        G = sim_cache["game_matrices"][m]
+        fids = sim_cache["game_face_ids_by_model"][m]
+        if studio_embed is None or G.shape[0] == 0:
+            matches_by_model[m] = pd.DataFrame(columns=empty_cols)
             continue
+
+        # Embeddings are L2-normalized, so dot product == cosine similarity.
+        sims = G @ studio_embed.astype(np.float32)        # shape (N_game,)
+        mask = sims >= thresholds[m]
+        if not mask.any():
+            matches_by_model[m] = pd.DataFrame(columns=empty_cols)
+            continue
+
+        passing_idx = np.where(mask)[0]
+        # argsort descending by similarity, then take top_k
+        order = passing_idx[np.argsort(-sims[passing_idx])][:int(top_k)]
+
+        meta = sim_cache["game_meta"]
         rows = []
-        for _, gr in game_df.iterrows():
-            ge = embeddings.get(m, {}).get(int(gr.FaceID))
-            if ge is None:
-                continue
-            sim = cosine_sim(studio_embed, ge)
-            if sim >= thresholds[m]:
-                rows.append({
-                    "GameFaceID": int(gr.FaceID),
-                    "Similarity": sim,
-                    "ImagePath": gr.ImagePath,
-                    "BoxX1": int(gr.BoxX1), "BoxY1": int(gr.BoxY1),
-                    "BoxX2": int(gr.BoxX2), "BoxY2": int(gr.BoxY2),
-                    "FaceCropPath": gr.FaceCropPath,
-                })
-        if rows:
-            df = pd.DataFrame(rows).sort_values("Similarity", ascending=False).head(int(top_k))
-        else:
-            df = pd.DataFrame(columns=["GameFaceID", "Similarity", "ImagePath",
-                                       "BoxX1", "BoxY1", "BoxX2", "BoxY2",
-                                       "FaceCropPath"])
-        matches_by_model[m] = df
+        for idx in order:
+            fid = int(fids[idx])
+            m_row = meta[fid]
+            rows.append({
+                "GameFaceID": fid,
+                "Similarity": float(sims[idx]),
+                "ImagePath": m_row["ImagePath"],
+                "BoxX1": m_row["BoxX1"], "BoxY1": m_row["BoxY1"],
+                "BoxX2": m_row["BoxX2"], "BoxY2": m_row["BoxY2"],
+                "FaceCropPath": m_row["FaceCropPath"],
+            })
+        matches_by_model[m] = pd.DataFrame(rows, columns=empty_cols)
 
     # --- Disagreement filter ---
     if view_mode == "Disagreements only":
