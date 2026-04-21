@@ -1,19 +1,19 @@
 """
 Rename files in a folder to offset person IDs.
 
-Usage:
-    python rename_dataset.py /path/to/folder 632
-
-Renames all files matching p{N}_* pattern in the given folder:
-    p1_a1.jpg  -> p632_a1.jpg
-    p5_p3.jpg  -> p636_p3.jpg
-
-p1 -> p{start}, p2 -> p{start+1}, etc.
+Set FOLDER_PATH and START_NUMBER below, then run:
+    python rename_dataset.py
 """
 
 import os
 import re
-import sys
+
+# ============================================================
+# CONFIGURE THESE BEFORE RUNNING
+# ============================================================
+FOLDER_PATH = "/path/to/your/folder"   # folder containing the images
+START_NUMBER = 632                      # p1 becomes p{START_NUMBER}
+# ============================================================
 
 
 def rename_files(folder_path: str, start_number: int):
@@ -61,19 +61,11 @@ def rename_files(folder_path: str, start_number: int):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python rename_dataset.py <folder_path> <start_number>")
-        print("Example: python rename_dataset.py ./positives 632")
-        sys.exit(1)
+    if not os.path.isdir(FOLDER_PATH):
+        print(f"Error: {FOLDER_PATH} is not a directory. Update FOLDER_PATH at the top of the script.")
+        raise SystemExit(1)
 
-    folder = sys.argv[1]
-    start = int(sys.argv[2])
+    print(f"\n  Folder: {FOLDER_PATH}")
+    print(f"  p1 -> p{START_NUMBER}, p2 -> p{START_NUMBER + 1}, ...")
 
-    if not os.path.isdir(folder):
-        print(f"Error: {folder} is not a directory.")
-        sys.exit(1)
-
-    print(f"\n  Folder: {folder}")
-    print(f"  p1 -> p{start}, p2 -> p{start + 1}, ...")
-
-    rename_files(folder, start)
+    rename_files(FOLDER_PATH, START_NUMBER)
