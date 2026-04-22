@@ -17,7 +17,7 @@ START_NUMBER = 632                      # p1 becomes p{START_NUMBER}
 
 
 def rename_files(folder_path: str, start_number: int):
-    pattern = re.compile(r"^p(\d+)_(.+)$")
+    pattern = re.compile(r"^[Pp](\d+)_(.+)$")
 
     rename_plan = []
     for fname in sorted(os.listdir(folder_path)):
@@ -30,7 +30,7 @@ def rename_files(folder_path: str, start_number: int):
         old_pid = int(match.group(1))
         suffix = match.group(2)
         new_pid = old_pid + (start_number - 1)
-        new_name = f"p{new_pid}_{suffix}{ext}"
+        new_name = f"P{new_pid}_{suffix}{ext}"
         rename_plan.append((fname, new_name))
 
     if not rename_plan:
@@ -66,6 +66,6 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     print(f"\n  Folder: {FOLDER_PATH}")
-    print(f"  p1 -> p{START_NUMBER}, p2 -> p{START_NUMBER + 1}, ...")
+    print(f"  P1 -> P{START_NUMBER}, P2 -> P{START_NUMBER + 1}, ...")
 
     rename_files(FOLDER_PATH, START_NUMBER)
