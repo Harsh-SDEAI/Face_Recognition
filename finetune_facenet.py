@@ -42,9 +42,10 @@ TEST_PERSONS = 20
 # Training
 BATCH_SIZE = 64
 EPOCHS = 30
-LR = 1e-4
+LR = 3e-5
 MARGIN = 0.2
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 5e-4
+DROPOUT = 0.8
 NUM_WORKERS = 4
 
 # LR Scheduler (reduces LR when val loss plateaus)
@@ -63,12 +64,11 @@ EARLY_STOP_PATIENCE = 7
 # Reproducibility
 SEED = 42
 
-# Layers to freeze (everything up to and including repeat_3)
+# Layers to freeze (everything up to and including repeat_2)
 FREEZE_LAYERS = [
     "conv2d_1a", "conv2d_2a", "conv2d_2b", "maxpool_3a",
     "conv2d_3b", "conv2d_4a", "conv2d_4b",
     "repeat_1", "mixed_6a", "repeat_2",
-    "mixed_7a", "repeat_3",
 ]
 
 # ============================================================
@@ -313,7 +313,7 @@ def main():
     )
 
     # --- Model ---
-    model = InceptionResnetV1(pretrained="vggface2").to(device)
+    model = InceptionResnetV1(pretrained="vggface2", dropout_prob=DROPOUT).to(device)
 
     for name, param in model.named_parameters():
         if any(name.startswith(layer) for layer in FREEZE_LAYERS):
@@ -322,6 +322,7 @@ def main():
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     frozen = sum(p.numel() for p in model.parameters() if not p.requires_grad)
     print(f"  Parameters: {trainable:,} trainable | {frozen:,} frozen")
+    print(f"  Dropout: {DROPOUT}")
 
     # --- Training setup ---
     criterion = nn.TripletMarginLoss(margin=MARGIN, p=2)
