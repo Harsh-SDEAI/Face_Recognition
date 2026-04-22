@@ -63,11 +63,12 @@ EARLY_STOP_PATIENCE = 7
 # Reproducibility
 SEED = 42
 
-# Layers to freeze (everything up to and including repeat_2)
+# Layers to freeze (everything up to and including repeat_3)
 FREEZE_LAYERS = [
     "conv2d_1a", "conv2d_2a", "conv2d_2b", "maxpool_3a",
     "conv2d_3b", "conv2d_4a", "conv2d_4b",
     "repeat_1", "mixed_6a", "repeat_2",
+    "mixed_7a", "repeat_3",
 ]
 
 # ============================================================
