@@ -128,13 +128,16 @@ def build_triplets(person_ids, anchors, positives, negatives):
 # ----------------------------------------------------------------
 
 _normalize = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+_resize = transforms.Resize((160, 160))
 
 base_transform = transforms.Compose([
+    _resize,
     transforms.ToTensor(),
     _normalize,
 ])
 
 anchor_train_transform = transforms.Compose([
+    _resize,
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.ColorJitter(brightness=0.15, contrast=0.15),
     transforms.ToTensor(),
@@ -142,6 +145,7 @@ anchor_train_transform = transforms.Compose([
 ])
 
 positive_train_transform = transforms.Compose([
+    _resize,
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomRotation(15),
     transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.07),
@@ -183,7 +187,7 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device):
 
         optimizer.zero_grad()
 
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             a_emb = F.normalize(model(anchor), p=2, dim=1)
             p_emb = F.normalize(model(positive), p=2, dim=1)
             n_emb = F.normalize(model(negative), p=2, dim=1)
@@ -226,7 +230,7 @@ def evaluate(model, loader, criterion, device):
         positive = positive.to(device)
         negative = negative.to(device)
 
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             a_emb = F.normalize(model(anchor), p=2, dim=1)
             p_emb = F.normalize(model(positive), p=2, dim=1)
             n_emb = F.normalize(model(negative), p=2, dim=1)
@@ -327,7 +331,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=LR_FACTOR, patience=LR_PATIENCE,
     )
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
 
     # --- CSV log ---
     log_path = os.path.join(OUTPUT_DIR, "training_log.csv")
