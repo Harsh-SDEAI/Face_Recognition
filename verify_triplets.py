@@ -1,12 +1,12 @@
 """
-Verify triplet completeness across anchor/positive/negative folders.
+Verify triplet pairing across anchor/positive/negative folders.
 
-For each person ID, checks if they have:
-  - At least 1 anchor
-  - At least 1 positive
-  - At least 1 negative
-
-Reports: complete pairs, incomplete pairs, and orphan files.
+Each triplet = (anchor, positive_i, negative_i), so positives and negatives
+must be equal per person. Reports:
+  - Balanced: anchor + equal P and N counts = ready for training
+  - Unbalanced: has all three types but P != N count, shows surplus files
+  - Incomplete: missing anchor, positives, or negatives entirely
+  - Orphans: exists in only one folder
 """
 
 import os
@@ -46,7 +46,8 @@ def verify():
 
     all_pids = sorted(set(anchors.keys()) | set(positives.keys()) | set(negatives.keys()))
 
-    complete = []
+    balanced = []
+    unbalanced = []
     incomplete = []
     orphans = []
 
@@ -58,40 +59,66 @@ def verify():
         has_a = a_count > 0
         has_p = p_count > 0
         has_n = n_count > 0
-
         present_in = sum([has_a, has_p, has_n])
 
         if has_a and has_p and has_n:
-            complete.append((pid, a_count, p_count, n_count))
+            if p_count == n_count:
+                balanced.append((pid, a_count, p_count, n_count))
+            else:
+                unbalanced.append((pid, a_count, p_count, n_count))
         elif present_in == 1:
             orphans.append((pid, a_count, p_count, n_count))
         else:
             incomplete.append((pid, a_count, p_count, n_count))
 
     # --- Summary ---
-    print(f"\n  Total person IDs found: {len(all_pids)}")
-    print(f"  Complete:   {len(complete)}")
+    total_triplets = sum(min(p, n) for _, _, p, n in balanced + unbalanced)
+    print(f"\n  Total person IDs: {len(all_pids)}")
+    print(f"  Balanced:   {len(balanced)}")
+    print(f"  Unbalanced: {len(unbalanced)}")
     print(f"  Incomplete: {len(incomplete)}")
     print(f"  Orphans:    {len(orphans)}")
+    print(f"  Total valid triplets: {total_triplets}")
 
-    # --- Complete ---
+    # --- Balanced ---
     print(f"\n{'='*60}")
-    print(f"  COMPLETE ({len(complete)}) - ready for training")
+    print(f"  BALANCED ({len(balanced)}) - ready for training")
     print(f"{'='*60}")
-    total_a, total_p, total_n = 0, 0, 0
-    for pid, a, p, n in complete:
-        total_a += a
-        total_p += p
-        total_n += n
-    print(f"  Total files: {total_a} anchors, {total_p} positives, {total_n} negatives")
-    if len(complete) <= 20:
-        for pid, a, p, n in complete:
-            print(f"    P{pid}: {a}A  {p}P  {n}N")
+    if balanced:
+        total_pairs = sum(p for _, _, p, _ in balanced)
+        print(f"  {total_pairs} triplets from {len(balanced)} persons")
+        if len(balanced) <= 20:
+            for pid, a, p, n in balanced:
+                print(f"    P{pid}: {a}A  {p}P  {n}N  = {min(p,n)} triplets")
+
+    # --- Unbalanced ---
+    if unbalanced:
+        print(f"\n{'='*60}")
+        print(f"  UNBALANCED ({len(unbalanced)}) - P and N counts don't match")
+        print(f"{'='*60}")
+        total_surplus = 0
+        for pid, a, p, n in unbalanced:
+            valid = min(p, n)
+            if p > n:
+                surplus = p - n
+                total_surplus += surplus
+                surplus_files = positives[pid][-surplus:]
+                print(f"    P{pid}: {a}A  {p}P  {n}N  = {valid} triplets, {surplus} extra positive(s) to delete:")
+                for f in surplus_files:
+                    print(f"      -> {f}")
+            else:
+                surplus = n - p
+                total_surplus += surplus
+                surplus_files = negatives[pid][-surplus:]
+                print(f"    P{pid}: {a}A  {p}P  {n}N  = {valid} triplets, {surplus} extra negative(s) to delete:")
+                for f in surplus_files:
+                    print(f"      -> {f}")
+        print(f"\n  Total surplus files to delete: {total_surplus}")
 
     # --- Incomplete ---
     if incomplete:
         print(f"\n{'='*60}")
-        print(f"  INCOMPLETE ({len(incomplete)}) - missing one type")
+        print(f"  INCOMPLETE ({len(incomplete)}) - missing one or more types")
         print(f"{'='*60}")
         for pid, a, p, n in incomplete:
             missing = []
@@ -107,14 +134,14 @@ def verify():
         print(f"{'='*60}")
         for pid, a, p, n in orphans:
             if a > 0:
-                folder = "anchors"
                 files = anchors[pid]
+                folder = "anchors"
             elif p > 0:
-                folder = "positives"
                 files = positives[pid]
+                folder = "positives"
             else:
-                folder = "negatives"
                 files = negatives[pid]
+                folder = "negatives"
             print(f"    P{pid}: {a}A  {p}P  {n}N  <- only in {folder}: {', '.join(files)}")
 
     print()
