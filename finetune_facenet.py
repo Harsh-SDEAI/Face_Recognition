@@ -51,6 +51,12 @@ NUM_WORKERS = 4
 LR_PATIENCE = 3     # epochs to wait before reducing
 LR_FACTOR = 0.5     # multiply LR by this factor
 
+# Warmup (linear ramp from LR/10 to LR over this many epochs)
+WARMUP_EPOCHS = 2
+
+# Gradient clipping (prevents spikes from hard triplets)
+GRAD_CLIP_MAX_NORM = 1.0
+
 # Early Stopping
 EARLY_STOP_PATIENCE = 7
 
@@ -116,18 +122,23 @@ def build_triplets(person_ids, anchors, positives, negatives):
 
 # ----------------------------------------------------------------
 # Transforms
-# NOTE: existing inference pipeline uses [0, 1] range (/ 255.0)
-#       with NO mean/std normalization. We match that here.
+# VGGFace2 pretrained weights expect [-1, 1] input range.
+# fixed_image_standardization: (x - 127.5) / 128.0
+# After ToTensor() [0,1], equivalent is Normalize([0.5], [0.5]).
 # ----------------------------------------------------------------
 
+_normalize = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+
 base_transform = transforms.Compose([
-    transforms.ToTensor(),  # [0, 1]
+    transforms.ToTensor(),
+    _normalize,
 ])
 
 anchor_train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.ColorJitter(brightness=0.15, contrast=0.15),
     transforms.ToTensor(),
+    _normalize,
 ])
 
 positive_train_transform = transforms.Compose([
@@ -136,6 +147,7 @@ positive_train_transform = transforms.Compose([
     transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.07),
     transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.5, 1.5))], p=0.2),
     transforms.ToTensor(),
+    _normalize,
     transforms.RandomErasing(p=0.3, scale=(0.02, 0.15)),
 ])
 
@@ -178,6 +190,10 @@ def train_one_epoch(model, loader, criterion, optimizer, scaler, device):
             loss = criterion(a_emb, p_emb, n_emb)
 
         scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(
+            (p for p in model.parameters() if p.requires_grad), GRAD_CLIP_MAX_NORM
+        )
         scaler.step(optimizer)
         scaler.update()
 
@@ -346,6 +362,13 @@ def main():
 
     for epoch in range(1, EPOCHS + 1):
         start = time.time()
+
+        # Warmup: linear ramp from LR/10 to LR over WARMUP_EPOCHS
+        if epoch <= WARMUP_EPOCHS:
+            warmup_lr = LR * (0.1 + 0.9 * epoch / WARMUP_EPOCHS)
+            for pg in optimizer.param_groups:
+                pg["lr"] = warmup_lr
+
         lr_current = optimizer.param_groups[0]["lr"]
 
         print(f"\n{'='*60}")
@@ -367,7 +390,10 @@ def main():
         print(f"  Avg d(a,p): {avg_d_ap:.4f} | Avg d(a,n): {avg_d_an:.4f}")
 
         elapsed = time.time() - start
-        scheduler.step(val_loss)
+
+        # Only let ReduceLROnPlateau kick in after warmup
+        if epoch > WARMUP_EPOCHS:
+            scheduler.step(val_loss)
 
         # Save checkpoint (every epoch, with metrics in filename)
         ckpt_name = (
