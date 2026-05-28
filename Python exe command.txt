@@ -1,107 +1,150 @@
 ============================================================
   FACE MATCHING - PYINSTALLER BUILD COMMAND
-  Target: Windows Server with NVIDIA GPU (CUDA 12.x / cu128)
+  Target: Windows Server with NVIDIA GPU (RTX 4090 / cu128)
+  PyTorch CUDA: 12.x, cuDNN: 9
 ============================================================
 
 
-STEP 1 - DISCOVER YOUR ACTUAL CUDA DLL FILENAMES + PATH
+STEP 1 - SET YOUR VENV TORCH/LIB PATH
 ------------------------------------------------------------
-Before building, run this on the server inside the same venv
-you will build from. It tells you the exact DLL filenames
-and the venv torch/lib path you need.
+Open cmd in your project folder (where scheduler.py lives),
+then set this variable to YOUR server's torch/lib path:
 
-python -c "import torch, os; lib=os.path.join(os.path.dirname(torch.__file__),'lib'); print('LIB DIR:', lib); [print(f) for f in sorted(os.listdir(lib)) if f.endswith('.dll')]"
+  set TORCH_LIB=C:\path\to\your\venv\Lib\site-packages\torch\lib
 
-Expected output (filenames may vary by PyTorch version):
-    cudart64_12.dll
-    cublas64_12.dll
-    cublasLt64_12.dll
-    cudnn64_9.dll
-    nvrtc64_120_0.dll
-    ...
-
-Copy the LIB DIR path and the exact DLL filenames into the
-build command below.
+To find the exact path, run:
+  python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__),'lib'))"
 
 
-STEP 2 - REPLACE THESE PLACEHOLDERS IN THE COMMAND
+STEP 2 - RUN THE BUILD COMMAND
 ------------------------------------------------------------
-    <TORCH_LIB>        -> the LIB DIR from Step 1
-                          e.g. C:\FaceMatching\venv\Lib\site-packages\torch\lib
-    cudart64_12.dll    -> verify exact name from Step 1
-    cublas64_12.dll    -> verify exact name from Step 1
-    cudnn64_9.dll      -> verify exact name from Step 1 (was cudnn64_8 in old build)
-    nvrtc64_120_0.dll  -> verify exact name from Step 1
+Paste this entire block as ONE command. The ^ at line ends
+continues the command across lines in Windows cmd.
+
+pyinstaller --noconfirm --onedir --console --clean --name FaceMatching ^
+  --hidden-import=torch ^
+  --hidden-import=torchvision ^
+  --hidden-import=facenet_pytorch ^
+  --hidden-import=cv2 ^
+  --hidden-import=PIL ^
+  --hidden-import=pyodbc ^
+  --hidden-import=apscheduler ^
+  --hidden-import=apscheduler.schedulers.blocking ^
+  --hidden-import=concurrent_log_handler ^
+  --hidden-import=settings ^
+  --hidden-import=logger_setup ^
+  --hidden-import=dotenv ^
+  --collect-all torch ^
+  --collect-all torchvision ^
+  --collect-all facenet_pytorch ^
+  --collect-all cv2 ^
+  --collect-all skimage ^
+  --collect-all pywin32 ^
+  --collect-submodules pywintypes ^
+  --add-binary "%TORCH_LIB%\cudart64_12.dll;." ^
+  --add-binary "%TORCH_LIB%\cublas64_12.dll;." ^
+  --add-binary "%TORCH_LIB%\cublasLt64_12.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_adv64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_cnn64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_engines_precompiled64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_engines_runtime_compiled64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_graph64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_heuristic64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\cudnn_ops64_9.dll;." ^
+  --add-binary "%TORCH_LIB%\nvrtc64_120_0.dll;." ^
+  --add-binary "%TORCH_LIB%\nvrtc-builtins64_128.dll;." ^
+  --add-binary "%TORCH_LIB%\nvJitLink_120_0.dll;." ^
+  scheduler.py
 
 
-STEP 3 - RUN FROM YOUR PROJECT ROOT (where scheduler.py lives)
+STEP 3 - VERIFY GPU IS ACTIVE IN THE BUILT EXE
 ------------------------------------------------------------
+After build, before deploying:
 
-pyinstaller --noconfirm --onedir --console --clean --name FaceMatching --hidden-import=torch --hidden-import=torchvision --hidden-import=facenet_pytorch --hidden-import=cv2 --hidden-import=PIL --hidden-import=pyodbc --hidden-import=apscheduler --hidden-import=apscheduler.schedulers.blocking --hidden-import=concurrent_log_handler --hidden-import=settings --hidden-import=logger_setup --hidden-import=dotenv --collect-all torch --collect-all torchvision --collect-all facenet_pytorch --collect-all cv2 --collect-all skimage --collect-all pywin32 --collect-submodules pywintypes --add-binary "<TORCH_LIB>\cudart64_12.dll;." --add-binary "<TORCH_LIB>\cublas64_12.dll;." --add-binary "<TORCH_LIB>\cudnn64_9.dll;." --add-binary "<TORCH_LIB>\nvrtc64_120_0.dll;." scheduler.py
+  cd dist\FaceMatching
+  FaceMatching.exe
 
-
-STEP 4 - VERIFY THE OUTPUT
-------------------------------------------------------------
-After build completes, you will find:
-
-    dist\FaceMatching\
-        FaceMatching.exe
-        _internal\        (all bundled deps + CUDA DLLs)
-        ...
-
-Test it:
-    cd dist\FaceMatching
-    FaceMatching.exe
-
-You should see your scheduler banner and logs/ + log_archive/
-folders being created.
+Watch the first log lines. The exe should pick up CUDA and
+say it's using the 4090. If you see "CPU" or "CUDA not
+available" -> something is wrong with the DLL bundle.
 
 
 ============================================================
-  WHAT CHANGED VS THE OLD COMMAND
+  WHY EACH DLL IS LISTED
 ============================================================
 
-REMOVED:
-  --onefile                     (re-extracts multi-GB on every launch; slow cold-start)
-  --hidden-import=easyocr       (commented out in code)
-  --collect-all easyocr         (commented out in code)
-  hardcoded C:\AIPhotoMatchexe  (machine-specific path; now placeholder)
-  cudnn64_8.dll                 (cuDNN 8 - mismatched with CUDA 12; replaced with cudnn64_9.dll for cu128)
+CUDA runtime (required for any GPU operation):
+  cudart64_12.dll               CUDA runtime API
+  cublas64_12.dll               BLAS (matrix math)
+  cublasLt64_12.dll             BLAS lightweight (newer ops)
+  nvrtc64_120_0.dll             Runtime JIT compilation
+  nvrtc-builtins64_128.dll      NVRTC builtin functions
+  nvJitLink_120_0.dll           JIT linker for CUDA 12
 
-ADDED:
-  --onedir                      (folder output; instant startup; easy patching)
-  --clean                       (clear stale build cache first)
-  --name FaceMatching           (clean output name)
-  --hidden-import=pyodbc        (binary ext - PyInstaller can miss it)
-  --hidden-import=apscheduler   (was missing - scheduler entry deps)
+cuDNN 9 (required for conv layers in MTCNN/FaceNet):
+  cudnn64_9.dll                 Main entry point
+  cudnn_adv64_9.dll             Advanced ops (attention etc.)
+  cudnn_cnn64_9.dll             Conv ops (MTCNN uses these)
+  cudnn_engines_precompiled64_9.dll   Precompiled kernels
+  cudnn_engines_runtime_compiled64_9.dll  Runtime kernels
+  cudnn_graph64_9.dll           Graph API
+  cudnn_heuristic64_9.dll       Auto-tuning heuristics
+  cudnn_ops64_9.dll             Basic ops
+
+NOTE: In cuDNN 8 (old build) everything was in cudnn64_8.dll.
+      cuDNN 9 split it across 8 files. ALL are required.
+
+
+============================================================
+  WHAT CHANGED VS OLD BUILD
+============================================================
+
+Removed:
+  --onefile                  -> --onedir (instant startup, no temp extraction)
+  --hidden-import=easyocr    (commented out in code)
+  --collect-all easyocr      (commented out in code)
+  Hardcoded C:\AIPhotoMatchexe paths -> %TORCH_LIB% variable
+
+Added:
+  --clean                            (clear stale build cache)
+  --name FaceMatching                (clean output name)
+  --hidden-import=pyodbc             (was missing)
+  --hidden-import=apscheduler        (was missing)
   --hidden-import=apscheduler.schedulers.blocking
-  --hidden-import=concurrent_log_handler  (used by logger_setup.py)
-  --hidden-import=logger_setup  (string-imported by scheduler.py)
-  --collect-all torchvision     (some PyTorch ops need it)
-  --collect-all skimage         (scikit-image has many submodules)
+  --hidden-import=concurrent_log_handler
+  --hidden-import=logger_setup
+  --collect-all torchvision
+  --collect-all skimage
+  7 extra cuDNN 9 sub-DLLs           (cuDNN 9 is split, all required)
+  nvJitLink_120_0.dll                (CUDA 12 runtime linker)
+  nvrtc-builtins64_128.dll           (NVRTC builtins)
+
+Replaced:
+  cudnn64_8.dll  ->  cudnn64_9.dll + 7 cuDNN 9 sub-DLLs
 
 
 ============================================================
-  IMPORTANT - NOT BUNDLED, MUST BE PRESENT AT RUNTIME
+  AFTER BUILD - WHAT MUST BE PRESENT AT RUNTIME
 ============================================================
 
-  1. .env file                  -> place next to the exe
-  2. logs\ folder               -> created at runtime, exe needs write access
-  3. log_archive\ folder        -> created at runtime, exe needs write access
-  4. MS ODBC Driver for SQL Server  -> install separately on the server
-                                       (must match driver name in .env)
-  5. NVIDIA driver              -> already on server, not bundled
+NOT bundled by PyInstaller; must exist on the deployment server:
+  1. .env                    -> place next to FaceMatching.exe
+  2. logs\ folder            -> created at runtime, exe needs write access
+  3. log_archive\ folder     -> created at runtime, exe needs write access
+  4. MS ODBC Driver for SQL Server  -> match the driver name in your .env
+  5. NVIDIA driver           -> already on server
 
 
 ============================================================
-  DEPLOYMENT FOLDER LAYOUT
+  RECOMMENDED DEPLOYMENT LAYOUT
 ============================================================
 
   C:\FaceMatching\
-      FaceMatching\           (copy of dist\FaceMatching folder)
+      FaceMatching\               (copy of dist\FaceMatching)
           FaceMatching.exe
-          _internal\
-      .env
-      logs\
-      log_archive\
-      start.bat               (launcher - separate file)
+          _internal\              (all bundled deps + CUDA DLLs)
+      .env                        (DB credentials, thresholds)
+      logs\                       (info.log, error.log)
+      log_archive\                (rotated logs)
+      start.bat                   (launcher - separate file)
