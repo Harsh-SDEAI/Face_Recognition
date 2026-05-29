@@ -10,12 +10,11 @@ REM   - Pair this with Task Scheduler ("At startup") so the
 REM     service also comes back automatically after a reboot.
 REM
 REM   DEPLOYMENT LAYOUT this script expects:
-REM     C:\FaceMatching\
-REM         start.bat              <-- this file (run from here)
+REM     C:\releasebuilds\AIPhotoMatch\AIPhtoMatch\
+REM         start.bat              <-- this file
 REM         .env                  <-- DB creds, thresholds
-REM         FaceMatching\
-REM             FaceMatching.exe
-REM             _internal\
+REM         AIPhotoMatch2026.exe
+REM         _internal\
 REM         logs\                 <-- auto-created
 REM         log_archive\          <-- auto-created
 REM ============================================================
@@ -24,7 +23,7 @@ REM --- Always run from this script's own folder, so .env and ---
 REM --- the logs\ folder resolve relative to HERE, not C:\Windows\System32 ---
 cd /d "%~dp0"
 
-set "EXE=FaceMatching\FaceMatching.exe"
+set "EXE=AIPhotoMatch2026.exe"
 set "LAUNCH_LOG=logs\launcher.log"
 
 if not exist "logs" mkdir "logs"
