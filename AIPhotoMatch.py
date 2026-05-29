@@ -12,7 +12,7 @@ import traceback
 import sys
 import settings
 from tqdm import tqdm
-#import time
+import time
 #import easyocr
 #from matplotlib import pyplot as plt
 #import logging
@@ -132,7 +132,7 @@ def detect_align_embed_studio_faces(spath, mtcnn_model, curDPP, connDPP, queue_d
             threshold = settings.THRESHOLD_STUDIO  # Set a confidence threshold
             # Filter detected faces based on the confidence score
             filtered_faces = [i for i, confidence in enumerate(confidences) if confidence > threshold]
-            if filtered_faces is None:
+            if not filtered_faces:
                 curDPP.execute("""
                 SELECT COUNT(*) FROM PlayerPhotoEmbedding
                 WHERE RosterID = ? AND TournamentID = ?
@@ -172,15 +172,17 @@ def detect_align_embed_studio_faces(spath, mtcnn_model, curDPP, connDPP, queue_d
                     image = torch.tensor(image).permute(2, 0, 1).unsqueeze(0).float().to(device) / 255.0  # Convert to tensor, normalize
                     #show_image = Image.fromarray(face_image)
                     #show_image.show()
-                    embedding = facenet(image)  # Get the embedding
-                    embedding = normalize(embedding, p=2, dim=1)  # L2 normalization of embeddings
+                    with torch.no_grad():
+                        embedding = facenet(image)  # Get the embedding
+                        embedding = normalize(embedding, p=2, dim=1)  # L2 normalization of embeddings
                     embedding = embedding.detach().cpu().numpy()
                     if embedding is not None:
                         photo_embeddings.append(embedding)  # Store the index and embedding
             return photo_embeddings
     except Exception as e:
         # Update game status to error
-        print(f"Error in gamenumber: {queue_data['GameNumber']}",e)
+        print(f"Error in gamenumber: {queue_data['GameNumber']}", e, file=sys.stderr)
+        traceback.print_exc()
         curDPP.execute("""UPDATE AITournamentQueue SET Status = 'error', RetryCount = RetryCount + 1 WHERE GameNumber = ?""", (queue_data["GameNumber"],))
         connDPP.commit()
     return cropped_photos
@@ -209,7 +211,7 @@ def detect_align_embed_game_faces(gpath, mtcnn_model, curDPP, connDPP, queue_dat
             threshold = settings.THRESHOLD_GAME
             # Filter detected faces based on the confidence score
             filtered_faces = [i for i, confidence in enumerate(confidences) if confidence > threshold]
-            if filtered_faces is None:
+            if not filtered_faces:
                 isgamephotonull = True
             else:
                 for i in filtered_faces:
@@ -234,15 +236,17 @@ def detect_align_embed_game_faces(gpath, mtcnn_model, curDPP, connDPP, queue_dat
                     face_image = np.array(photo) # Convert the PIL image to a NumPy array
                     image = cv2.resize(face_image, (160, 160))  # Resize to 160x160 as required by FaceNet
                     image = torch.tensor(image).permute(2, 0, 1).unsqueeze(0).float().to(device) / 255.0  # Convert to tensor, normalize
-                    embedding = facenet(image)  # Get the embedding
-                    embedding = normalize(embedding, p=2, dim=1)  # L2 normalization of embeddings
+                    with torch.no_grad():
+                        embedding = facenet(image)  # Get the embedding
+                        embedding = normalize(embedding, p=2, dim=1)  # L2 normalization of embeddings
                     embedding = embedding.detach().cpu().numpy()
                     if embedding is not None:
                         photo_embeddings.append(embedding)  # Store the index and embedding
             return photo_embeddings
     except Exception as e:
         # Update game status to error
-        print(f"Error in gamenumber: {queue_data['GameNumber']}",e)
+        print(f"Error in gamenumber: {queue_data['GameNumber']}", e, file=sys.stderr)
+        traceback.print_exc()
         curDPP.execute("""UPDATE AITournamentQueue SET Status = 'error', RetryCount = RetryCount + 1 WHERE GameNumber = ?""", (queue_data["GameNumber"],))
         connDPP.commit()
     return cropped_photos  
@@ -356,11 +360,11 @@ def process_constellation_updates(curDPP, curCDPMC, curCDP2000, connDPP):
 
     except Exception as e:
         connDPP.rollback()
-        print(f"Error in process_constellation_updates function: {e}")
-        traceback.print_exc() 
+        print(f"Error in process_constellation_updates function: {e}", file=sys.stderr)
+        traceback.print_exc()
         _, _, tb = sys.exc_info()
         line_number = tb.tb_lineno
-        print(f"Error occurred on line: {line_number}")
+        print(f"Error occurred on line: {line_number}", file=sys.stderr)
     return last_processed_id, latest_constellation_id, game_info_list
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -429,6 +433,8 @@ def process_tasks_once():
                             WHERE GameNumber = ?""", (queue_data["GameNumber"],))
             connDPP.commit()
             print(f"Photo matching process begins for Game Number: {queue_data['GameNumber']}")
+            game_start_time = time.time()
+            match_count = 0
 
             #Fetch the Team details 
             curCDP2000.execute("SELECT * FROM Team WHERE TournamentID =? and TeamKey in (?,?)",(queue_data['TournamentID'], queue_data['TeamKey1'], queue_data['TeamKey2']))
@@ -584,6 +590,7 @@ def process_tasks_once():
                         s_embedding = np.frombuffer(player['SFaceEmbeddings'], dtype=np.float32).reshape(1, -1)
                         distance = euclidean_distance(s_embedding, embedding)
                         if distance < euclidean_threshold:
+                            match_count += 1
                             curDPP.execute("update GamePhotoDetail set IsMatch = 1 where GamePhotoDetailId = ?", (id))
                             connDPP.commit()
                             curDPP.execute("SELECT TOP 1 * from AIResult where ConstellationID = ?  AND RosterID = ? AND GameNumber = ?", (game_data['ConstellationID'], player['RosterID'], game_data['GameNumber']))
@@ -599,6 +606,8 @@ def process_tasks_once():
                                             game_data['R'],player['TeamKey'],teamNumber,teamName,player_details['FirstName'],player_details['LastName']))
                                 connDPP.commit()                    
             print(f"Game photos embedding and matching task completed for {game_photos} game photos for Game Number: {queue_data['GameNumber']}")
+            game_elapsed_minutes = (time.time() - game_start_time) / 60
+            print(f"Game Number: {queue_data['GameNumber']} summary -> matches found: {match_count}, game photos processed: {game_photos}, time taken: {game_elapsed_minutes:.2f} minutes")
             print(f"Photo matching process completed for Game Number: {queue_data['GameNumber']}")
             print("----------------------------------------------------------------------------------------------------------------------------")
             global error_occurred
@@ -609,15 +618,16 @@ def process_tasks_once():
                 curDPP.execute("""UPDATE AITournamentQueue SET Status = 'error', ProcessEndOn = CURRENT_TIMESTAMP, RetryCount = RetryCount + 1 WHERE GameNumber = ?""", (queue_data['GameNumber'],))
                 connDPP.commit()
                 error_occurred = False
+            torch.cuda.empty_cache()
             #time.sleep(processing_sleeptime)
 
     except Exception as e:
-        print("An error occurred:", e)
+        print("An error occurred:", e, file=sys.stderr)
         traceback.print_exc()  # This prints the full traceback including line number
         # If you want to manually access the line number:
         _, _, tb = sys.exc_info()
         line_number = tb.tb_lineno
-        print(f"Error occurred on line: {line_number} in Game Number: {game_error_occurred}")
+        print(f"Error occurred on line: {line_number} in Game Number: {game_error_occurred}", file=sys.stderr)
         curDPP.execute("""UPDATE AITournamentQueue SET Status = 'error', ProcessEndOn = CURRENT_TIMESTAMP, RetryCount = RetryCount + 1 WHERE GameNumber = ?""", (game_error_occurred,))
         connDPP.commit()
         
