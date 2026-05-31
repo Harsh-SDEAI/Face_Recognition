@@ -1,0 +1,18 @@
+# ============================================================
+# Reporting tool dependencies (SEPARATE from the production app)
+# ------------------------------------------------------------
+# These are ONLY for generating the season Excel reports. Do NOT
+# add them to the main requirements.txt or the PyInstaller build -
+# the deployed service does not use pandas or xlsxwriter.
+#
+# Install (ideally in its own venv, or alongside the app):
+#   pip install -r requirements-report.txt
+# ============================================================
+
+pandas>=2.0
+XlsxWriter>=3.1
+
+# Already used by the production app, listed here so the reporting
+# tool also works in a standalone environment:
+pyodbc>=5.0
+python-dotenv>=1.0
