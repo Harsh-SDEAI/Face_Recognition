@@ -1,0 +1,9 @@
+# ============================================================
+# Notifier dependencies (SEPARATE from the production app).
+# Only needed on the machine that sends the start/stop emails.
+# smtplib / email / ssl are in the Python standard library.
+# ============================================================
+
+python-dotenv>=1.0   # read SMTP creds + recipients from .env
+pyodbc>=5.0          # read-only summary query (stop email only)
+pandas>=2.0          # reused by reports/db.run_query
