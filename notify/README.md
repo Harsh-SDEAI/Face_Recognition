@@ -57,8 +57,20 @@ It is **read-only** against the databases: it reuses `reports/db.py`
 
 ## Test it by hand
 
+**Start with the SMTP test** - it sends a one-line email and prints exactly what
+config it used, so you can confirm email works *before* scheduling anything:
+
 ```
 cd notify
+python notifier.py test
+```
+If it fails, the most common cause on Office 365 is **Authenticated SMTP being
+disabled** for the mailbox - ask IT to enable SMTP AUTH for that account (or use
+an app password). It also checks for missing creds, wrong user/password, and a
+blocked port 587.
+
+Once `test` works, the rest will too:
+```
 python notifier.py start    # should say "Started OK" if the service is up now
 python notifier.py check    # heartbeat
 python notifier.py stop     # night's summary

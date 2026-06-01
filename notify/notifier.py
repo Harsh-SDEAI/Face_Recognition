@@ -9,6 +9,7 @@ IMPORTANT: 'start' and 'check' VERIFY the service is actually running before
 they say so, so you never get a false "started" when the exe failed to launch.
 
 Usage / schedule (all Daily):
+    python notifier.py test     # send a one-line test email to verify SMTP
     python notifier.py start    # ~02:05  -> "started OK" or "FAILED to start"
     python notifier.py check    # 03:00 / 04:00 / 05:00 -> heartbeat / alert
     python notifier.py stop     # ~06:02  -> night's summary
@@ -131,6 +132,48 @@ def notify_stop():
     _send(subject, text, html)
 
 
+def notify_test():
+    """
+    Send a one-line test email so SMTP can be verified BEFORE wiring up the
+    scheduled tasks. Prints the (password-masked) config it's using and the
+    outcome, then exits non-zero on failure so you can tell at a glance.
+    """
+    host = os.getenv("SMTP_HOST", "smtp.office365.com")
+    port = os.getenv("SMTP_PORT", "587")
+    user = os.getenv("SMTP_USER")
+    sender = os.getenv("SMTP_FROM", user)
+    pwd_set = "yes" if os.getenv("SMTP_PASSWORD") else "NO (missing!)"
+    recipients = mailer._recipients()
+
+    print("SMTP test - configuration in use:", flush=True)
+    print(f"  SMTP_HOST          : {host}:{port}", flush=True)
+    print(f"  SMTP_USER          : {user or 'NOT SET'}", flush=True)
+    print(f"  SMTP_FROM          : {sender or 'NOT SET'}", flush=True)
+    print(f"  SMTP_PASSWORD set  : {pwd_set}", flush=True)
+    print(f"  NOTIFY_RECIPIENTS  : {recipients or 'NONE'}", flush=True)
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok = mailer.send_email(
+        subject=f"AI Face Matching - SMTP test ({now})",
+        text_body=(f"This is a test email from the AI Face Matching notifier, "
+                   f"sent at {now}. If you can read this, SMTP is working and "
+                   f"the start/heartbeat/stop emails will be delivered."),
+        html_body=(f"<html><body style='font-family:Segoe UI,Arial,sans-serif'>"
+                   f"<h2 style='color:#1a7f37;margin:0 0 4px'>&#9989; SMTP test "
+                   f"OK</h2><p>Sent at <b>{now}</b>. The notifier can send "
+                   f"email.</p></body></html>"),
+    )
+    if ok:
+        print("\nRESULT: test email sent. Check the inbox(es) above.", flush=True)
+    else:
+        print("\nRESULT: FAILED to send. Common causes:\n"
+              "  - O365 'Authenticated SMTP' disabled for this mailbox\n"
+              "    (ask IT to enable SMTP AUTH, or use an app password)\n"
+              "  - wrong SMTP_USER / SMTP_PASSWORD\n"
+              "  - firewall blocking outbound port 587", flush=True)
+        sys.exit(1)
+
+
 def main():
     mode = (sys.argv[1].lower() if len(sys.argv) > 1 else "").strip()
     if mode == "start":
@@ -139,8 +182,10 @@ def main():
         notify_check()
     elif mode == "stop":
         notify_stop()
+    elif mode == "test":
+        notify_test()
     else:
-        print("Usage: python notifier.py [start|check|stop]", flush=True)
+        print("Usage: python notifier.py [start|check|stop|test]", flush=True)
         sys.exit(2)
 
 
