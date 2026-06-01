@@ -51,7 +51,8 @@ It is **read-only** against the databases: it reuses `reports/db.py`
    # Optional notifier tuning:
    # SERVICE_PROCESS_NAME=AIPhotoMatch2026.exe   # the exe to look for
    # NOTIFY_LOG_DIR=C:\releasebuilds\AIPhotoMatch\logs  # adds "last log activity"
-   # NOTIFY_HEARTBEAT_ONLY_ON_FAILURE=false      # true = quiet hourly checks
+   # NOTIFY_HEARTBEAT_ONLY_ON_FAILURE=true       # DEFAULT: quiet hourly checks
+   #                                             # set to false for hourly "Running OK"
    ```
 
 ## Test it by hand
@@ -89,12 +90,14 @@ Notes:
 - The notifier never throws on a mail/DB error - it just logs and exits, so a
   bad night can't cascade.
 
-## Quieter heartbeats
+## Heartbeat noise level
 
-If you don't want a "Running OK" email every hour and only want to hear from the
-heartbeat when something is **wrong**, set
-`NOTIFY_HEARTBEAT_ONLY_ON_FAILURE=true`. Healthy checks stay silent; a down
-service still alerts. (The 2:05 start confirmation and 6:02 summary always send.)
+**Default: quiet** (`NOTIFY_HEARTBEAT_ONLY_ON_FAILURE` defaults to `true`). The
+hourly checks stay silent while healthy and only email when the service is
+**down**. You still always get the 2:05 start confirmation and the 6:02 summary.
+
+If you'd rather get a "Running OK" email every hour as reassurance, set
+`NOTIFY_HEARTBEAT_ONLY_ON_FAILURE=false` in `.env`.
 
 ## What the emails contain
 

@@ -31,7 +31,10 @@ import health  # noqa: E402
 
 
 def _only_on_failure():
-    return os.getenv("NOTIFY_HEARTBEAT_ONLY_ON_FAILURE", "false").lower() in (
+    # Default TRUE: healthy hourly heartbeats stay silent; we only email on the
+    # start confirmation, the stop summary, and any DOWN alert. Set this to
+    # "false" if you want a "Running OK" email every hour instead.
+    return os.getenv("NOTIFY_HEARTBEAT_ONLY_ON_FAILURE", "true").lower() in (
         "1", "true", "yes", "y")
 
 
