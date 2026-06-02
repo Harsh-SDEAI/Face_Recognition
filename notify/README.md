@@ -28,8 +28,10 @@ its own "I stopped" email. This notifier therefore runs as its own tiny process,
 triggered by Task Scheduler. It does **not** modify, rebuild, or depend on the
 main service exe.
 
-It is **read-only** against the databases: it reuses `reports/db.py`
-(`pyodbc readonly=True` + a write/DDL keyword guard) and only runs `SELECT`s.
+The folder is **self-contained**: it has its own `db.py` and its own `.env`, and
+imports nothing from outside this folder. You can copy just the `notify` folder
+to the server. DB access is **read-only** (`pyodbc readonly=True` + a write/DDL
+keyword guard, SELECTs only). Only the **DPP** database is used.
 
 ## Setup
 
@@ -37,8 +39,17 @@ It is **read-only** against the databases: it reuses `reports/db.py`
    ```
    pip install -r notify/requirements-notify.txt
    ```
-2. Add these keys to the same `.env` the service uses:
+2. Create a `.env` **in this folder** with the DPP credentials and the email
+   settings (this is the only DB it needs):
    ```
+   # --- DPP database (read-only) ---
+   DB_DRIVER_DPP=ODBC Driver 17 for SQL Server
+   DB_SERVER_DPP=your_dpp_server
+   DB_NAME_DPP=DREAMSPARKPHOTOS
+   DB_USER_DPP=your_readonly_user
+   DB_PASSWORD_DPP=your_password
+
+   # --- Email (Office 365) ---
    SMTP_USER=alerts@yourcompany.com
    SMTP_PASSWORD=your_app_or_mailbox_password
    NOTIFY_RECIPIENTS=harsh.n@masterlysolutions.com, teammate@yourcompany.com

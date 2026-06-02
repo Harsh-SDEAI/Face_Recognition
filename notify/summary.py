@@ -1,25 +1,15 @@
 """
 Builds the "what happened tonight" summary for the stop email.
 
-Strictly READ-ONLY: it reuses reports/db.py (pyodbc readonly=True + a write/DDL
-keyword guard), runs only SELECTs, and never commits anything.
+Self-contained and strictly READ-ONLY: it uses this folder's own db.py
+(pyodbc readonly=True + a write/DDL keyword guard), runs only SELECTs against
+the DPP database, and never commits anything.
 
 The "tonight" window is [today 02:00, now]. Because the stop notifier runs at
 ~06:02, this captures exactly the run that just ended.
 """
 
-import os
-import sys
 from datetime import datetime, time
-
-
-def _db():
-    """Lazy import of the read-only DB layer so that render() (pure formatting)
-    never needs pyodbc/pandas - only build_summary() does."""
-    sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "..", "reports"))
-    from db import connect_dpp, run_query  # noqa: E402
-    return connect_dpp, run_query
 
 
 def _window_start():
@@ -28,12 +18,16 @@ def _window_start():
     return datetime.combine(now.date(), time(2, 0, 0))
 
 
-def _one(df, col, default=0):
+def _int(row, col, default=0):
     try:
-        v = df.iloc[0][col]
+        v = row.get(col)
         return int(v) if v is not None else default
     except Exception:
         return default
+
+
+def _first(rows):
+    return rows[0] if rows else {}
 
 
 def build_summary():
@@ -41,18 +35,19 @@ def build_summary():
     Returns a dict of the night's numbers. Any single query that fails is
     swallowed so a schema mismatch can't stop the email from going out.
     """
+    import db  # local, self-contained read-only layer
+
     start = _window_start()
     data = {
         "window_start": start,
         "generated_at": datetime.now(),
     }
 
-    connect_dpp, run_query = _db()
-    conn = connect_dpp()
+    conn = db.connect_dpp()
     try:
         # Games finished tonight, split by outcome.
         try:
-            q = run_query(conn, """
+            row = _first(db.run_query(conn, """
                 SELECT
                     SUM(CASE WHEN Status = 'completed' THEN 1 ELSE 0 END) AS Completed,
                     SUM(CASE WHEN Status = 'error' THEN 1 ELSE 0 END) AS Errored,
@@ -62,35 +57,35 @@ def build_summary():
                         AS AvgMinutes
                 FROM AITournamentQueue
                 WHERE ProcessEndOn >= ?
-            """, [start])
-            data["games_completed"] = _one(q, "Completed")
-            data["games_errored"] = _one(q, "Errored")
-            avg = q.iloc[0]["AvgMinutes"]
+            """, [start]))
+            data["games_completed"] = _int(row, "Completed")
+            data["games_errored"] = _int(row, "Errored")
+            avg = row.get("AvgMinutes")
             data["avg_minutes"] = round(float(avg), 2) if avg is not None else None
         except Exception as e:  # noqa: BLE001
             data["games_query_error"] = f"{type(e).__name__}: {e}"
 
         # Matches / player suggestions created tonight.
         try:
-            q = run_query(conn, """
+            row = _first(db.run_query(conn, """
                 SELECT COUNT(*) AS Suggestions,
                        COUNT(DISTINCT RosterID) AS PlayersMatched
                 FROM AIResult
                 WHERE CreatedOn >= ?
-            """, [start])
-            data["suggestions"] = _one(q, "Suggestions")
-            data["players_matched"] = _one(q, "PlayersMatched")
+            """, [start]))
+            data["suggestions"] = _int(row, "Suggestions")
+            data["players_matched"] = _int(row, "PlayersMatched")
         except Exception as e:  # noqa: BLE001
             data["result_query_error"] = f"{type(e).__name__}: {e}"
 
         # Whatever is still waiting - picked up at 02:00 tomorrow.
         try:
-            q = run_query(conn, """
+            row = _first(db.run_query(conn, """
                 SELECT COUNT(*) AS Leftover
                 FROM AITournamentQueue
                 WHERE Status IN ('pending', 'error', 'InProgress')
-            """)
-            data["leftover_in_queue"] = _one(q, "Leftover")
+            """))
+            data["leftover_in_queue"] = _int(row, "Leftover")
         except Exception as e:  # noqa: BLE001
             data["queue_query_error"] = f"{type(e).__name__}: {e}"
     finally:
