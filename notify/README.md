@@ -49,15 +49,15 @@ keyword guard, SELECTs only). Only the **DPP** database is used.
    DB_USER_DPP=your_readonly_user
    DB_PASSWORD_DPP=your_password
 
-   # --- Email (Office 365) ---
-   SMTP_USER=alerts@yourcompany.com
-   SMTP_PASSWORD=your_app_or_mailbox_password
+   # --- Email (Gmail) ---
+   SMTP_USER=masterlysocial@gmail.com
+   SMTP_PASSWORD=your_16char_app_password
    NOTIFY_RECIPIENTS=harsh.n@masterlysolutions.com, teammate@yourcompany.com
 
-   # Optional (Office 365 defaults shown):
-   # SMTP_HOST=smtp.office365.com
-   # SMTP_PORT=587
-   # SMTP_FROM=alerts@yourcompany.com
+   # Optional (Gmail defaults shown - no need to set these):
+   # SMTP_HOST=smtp.gmail.com
+   # SMTP_PORT=465
+   # SMTP_FROM=masterlysocial@gmail.com
 
    # Optional notifier tuning:
    # SERVICE_PROCESS_NAME=AIPhotoMatch2026.exe   # the exe to look for

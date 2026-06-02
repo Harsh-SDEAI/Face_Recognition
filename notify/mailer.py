@@ -1,19 +1,24 @@
 """
-Tiny SMTP sender for the start/stop notifications (Office 365 / Outlook).
+Tiny SMTP sender for the start/stop notifications.
 
-Reads all connection settings from environment variables (loaded from the same
-.env the service uses). Sends a multipart text+HTML email to one or more
-recipients. Nothing here touches a database.
+Reads all connection settings from environment variables (loaded from the .env
+in this folder). Sends a multipart text+HTML email to one or more recipients.
+Nothing here touches a database.
 
 Required .env keys:
-    SMTP_USER         e.g. alerts@yourcompany.com   (the mailbox to log in as)
-    SMTP_PASSWORD     the password / app password for that mailbox
+    SMTP_USER         e.g. masterlysocial@gmail.com
+    SMTP_PASSWORD     the app password for that mailbox
     NOTIFY_RECIPIENTS comma-separated list, e.g. "harsh.n@x.com, ops@x.com"
 
-Optional .env keys (sensible Office 365 defaults):
-    SMTP_HOST   default smtp.office365.com
-    SMTP_PORT   default 587  (STARTTLS)
+Optional .env keys (Gmail defaults):
+    SMTP_HOST   default smtp.gmail.com
+    SMTP_PORT   default 465  (direct SSL)
     SMTP_FROM   default = SMTP_USER
+
+Port behaviour:
+    465  -> SMTP_SSL  (direct SSL, used by Gmail)
+    587  -> SMTP     + STARTTLS (used by Office 365)
+    other -> same as 587
 """
 
 import os
@@ -32,8 +37,8 @@ def send_email(subject, text_body, html_body=None):
     Send one email. Returns True on success, False on failure (never raises),
     so a mail problem can never crash the caller.
     """
-    host = os.getenv("SMTP_HOST", "smtp.office365.com")
-    port = int(os.getenv("SMTP_PORT", "587"))
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.getenv("SMTP_PORT", "465"))
     user = os.getenv("SMTP_USER")
     password = os.getenv("SMTP_PASSWORD")
     sender = os.getenv("SMTP_FROM", user)
@@ -52,13 +57,21 @@ def send_email(subject, text_body, html_body=None):
     if html_body:
         msg.add_alternative(html_body, subtype="html")
 
+    ctx = ssl.create_default_context()
     try:
-        with smtplib.SMTP(host, port, timeout=30) as server:
-            server.ehlo()
-            server.starttls(context=ssl.create_default_context())
-            server.ehlo()
-            server.login(user, password)
-            server.send_message(msg)
+        if port == 465:
+            # Direct SSL - Gmail and most modern providers on port 465
+            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as server:
+                server.login(user, password)
+                server.send_message(msg)
+        else:
+            # STARTTLS - Office 365 and others on port 587
+            with smtplib.SMTP(host, port, timeout=30) as server:
+                server.ehlo()
+                server.starttls(context=ctx)
+                server.ehlo()
+                server.login(user, password)
+                server.send_message(msg)
         print(f"MAILER: sent '{subject}' to {len(recipients)} recipient(s).",
               flush=True)
         return True
