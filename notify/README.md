@@ -96,12 +96,21 @@ Action "Start in" = the folder that has `.env`):
 | Task name                | Trigger (Daily)        | Program | Arguments           |
 |--------------------------|------------------------|---------|---------------------|
 | `AIPhotoMatch-StartMail` | **2:05 AM**            | `python`| `notifier.py start` |
-| `AIPhotoMatch-Heartbeat` | **3:00 AM**, repeat every **1 hour** for **3 hours** | `python`| `notifier.py check` |
+| `AIPhotoMatch-Heartbeat` | **3:00 / 4:00 / 5:00 AM** (see below) | `python`| `notifier.py check` |
 | `AIPhotoMatch-StopMail`  | **6:02 AM**            | `python`| `notifier.py stop`  |
 
-Tip for the heartbeat: in the trigger, set **Start 3:00 AM**, tick **Repeat task
-every: 1 hour**, **for a duration of: 3 hours** -> it fires at 3:00, 4:00, 5:00.
-(Or just make three separate Daily tasks at 3:00 / 4:00 / 5:00 if you prefer.)
+### Heartbeat timing - DO NOT let it fire at 6:00
+
+The heartbeat must run only at **3:00, 4:00, 5:00** - never at **6:00**. At
+6:00 the service is being force-killed, so a 6:00 check races the shutdown and
+sends a FALSE "[ALERT] NOT running" email.
+
+**Recommended (zero ambiguity):** give the Heartbeat task **three separate Daily
+triggers** at **3:00**, **4:00**, and **5:00**.
+
+**Alternative (single repeating trigger):** Start **3:00 AM**, tick **Repeat task
+every: 1 hour**, **for a duration of: 2 hours**. That fires at 3:00, 4:00, 5:00
+and stops - a "3 hours" duration is WRONG because it also fires at 6:00.
 
 Notes:
 - **2:05 / 6:02**, not 2:00 / 6:00 - the start check runs a few minutes *after*
