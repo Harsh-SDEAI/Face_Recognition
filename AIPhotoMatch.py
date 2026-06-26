@@ -295,6 +295,31 @@ def process_constellation_updates(curDPP, curCDPMC, curCDP2000, connDPP):
     last_processed_id = None
     latest_constellation_id = None
     game_info_list = []
+
+    def resolve_team_keys(game_number, tournament_id):
+        """Resolve Home/Visitor team keys for a game.
+        Tries CDP2000.WSA.AllGames first; if the row is missing or either key is
+        NULL, falls back to CDP2000.WSA.AllGamesCurrentYearTemp. The original table
+        wins for any key it has; the temp table only fills the gaps.
+        Returns (home_key, visitor_key); either may be None if still unavailable."""
+        def _lookup(table):
+            curCDP2000.execute(f"""
+                SELECT TOP 1 HomeTeamKey, VisitorTeamKey
+                FROM {table}
+                WHERE GameNumber = ? AND TournamentID = ?
+            """, game_number, tournament_id)
+            r = curCDP2000.fetchone()
+            if r is None:
+                return None, None
+            return r.HomeTeamKey, r.VisitorTeamKey
+
+        home_key, visitor_key = _lookup("CDP2000.WSA.AllGames")
+        if home_key is None or visitor_key is None:
+            temp_home, temp_visitor = _lookup("CDP2000.WSA.AllGamesCurrentYearTemp")
+            home_key = home_key if home_key is not None else temp_home
+            visitor_key = visitor_key if visitor_key is not None else temp_visitor
+        return home_key, visitor_key
+
     try:
         # Step 1: Get last processed constellation ID
         curDPP.execute("select top 1 ConstellationID from ConstellationIDInfo order by 1 desc")
@@ -316,38 +341,61 @@ def process_constellation_updates(curDPP, curCDPMC, curCDP2000, connDPP):
         """, last_processed_id)
         game_info_list = curCDPMC.fetchall() 
 
+        # Step 3.5: Self-healing - retry key resolution for games previously parked
+        # as 'keymissing'. Their ConstellationID is below the high-water-mark, so the
+        # discovery step below will not revisit them; this pass moves them back to
+        # 'pending' (and fills in the real keys) once CDP2000 finally has the data.
+        curDPP.execute("SELECT GameNumber, TournamentID FROM AITournamentQueue WHERE Status = 'keymissing'")
+        keymissing_rows = curDPP.fetchall()
+        for km_row in keymissing_rows:
+            km_home, km_visitor = resolve_team_keys(km_row.GameNumber, km_row.TournamentID)
+            if km_home is not None and km_visitor is not None:
+                print(f"Team keys resolved for GameNumber {km_row.GameNumber}, TournamentID {km_row.TournamentID} - moving 'keymissing' -> 'pending'")
+                curDPP.execute("""
+                    UPDATE AITournamentQueue
+                    SET TeamKey1 = ?, TeamKey2 = ?, Status = 'pending', RetryCount = 0, UpdatedOn = CURRENT_TIMESTAMP
+                    WHERE TournamentID = ? AND GameNumber = ?
+                """, km_home, km_visitor, km_row.TournamentID, km_row.GameNumber)
+        connDPP.commit()
+
         # Step 4: Insert each GameNumber into AITournamentQueue
         for game_number, tournament_id in game_info_list:
-            curCDP2000.execute("""
-                    SELECT TournamentID, GameNumber, HomeTeamKey, VisitorTeamKey
-                    FROM CDP2000.WSA.AllGames
-                    WHERE GameNumber = ? and TournamentID = ?
-            """, game_number, tournament_id)
-            keyrows = curCDP2000.fetchall()
+            home_key, visitor_key = resolve_team_keys(game_number, tournament_id)
 
-            for row in keyrows:
-                # Check if the record exists
-                curDPP.execute("""
-                    SELECT COUNT(1) 
-                    FROM AITournamentQueue 
-                    WHERE TournamentID = ? AND GameNumber = ?
-                """, row.TournamentID, row.GameNumber)
-                
-                exists = curDPP.fetchone()[0]
-                
+            # Check if the record exists
+            curDPP.execute("""
+                SELECT COUNT(1)
+                FROM AITournamentQueue
+                WHERE TournamentID = ? AND GameNumber = ?
+            """, tournament_id, game_number)
+            exists = curDPP.fetchone()[0]
+
+            if home_key is not None and visitor_key is not None:
                 if exists:
-                    # Update the existing record
+                    # Update the existing record (refresh keys in case they were placeholders)
                     curDPP.execute("""
-                        UPDATE AITournamentQueue 
-                        SET Status = 'pending', RetryCount = 0, UpdatedOn = CURRENT_TIMESTAMP
+                        UPDATE AITournamentQueue
+                        SET TeamKey1 = ?, TeamKey2 = ?, Status = 'pending', RetryCount = 0, UpdatedOn = CURRENT_TIMESTAMP
                         WHERE TournamentID = ? AND GameNumber = ?
-                    """, row.TournamentID, row.GameNumber)
+                    """, home_key, visitor_key, tournament_id, game_number)
                 else:
                     # Insert new record
                     curDPP.execute("""
                         INSERT INTO AITournamentQueue (TournamentID, GameNumber, TeamKey1, TeamKey2, Status, RetryCount)
                         VALUES (?, ?, ?, ?, 'pending', 0)
-                    """, row.TournamentID, row.GameNumber, row.HomeTeamKey, row.VisitorTeamKey)
+                    """, tournament_id, game_number, home_key, visitor_key)
+            else:
+                # One or both team keys are still missing after the temp-table fallback.
+                # Park the game as 'keymissing' so it is visible in the queue (not just in
+                # the logs) and is left untouched by the night engine. TeamKey1/TeamKey2 are
+                # NOT NULL, so store whichever key we have and '' as a placeholder for the missing one.
+                print(f"Team key missing for GameNumber {game_number}, TournamentID {tournament_id} (Home={home_key}, Visitor={visitor_key}) - parking as 'keymissing'")
+                if not exists:
+                    curDPP.execute("""
+                        INSERT INTO AITournamentQueue (TournamentID, GameNumber, TeamKey1, TeamKey2, Status, RetryCount)
+                        VALUES (?, ?, ?, ?, 'keymissing', 0)
+                    """, tournament_id, game_number, home_key if home_key is not None else '', visitor_key if visitor_key is not None else '')
+                # If it already exists, leave it untouched; the self-healing pass keeps retrying.
             connDPP.commit()
 
 
